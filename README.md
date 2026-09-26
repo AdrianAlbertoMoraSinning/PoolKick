@@ -1,79 +1,116 @@
-# PoolKick — Football Prediction Pools
+# PoolKick V2 — Football Prediction Pools
 
-PoolKick is a responsive web platform for private social prediction pools focused on football tournaments rather than domestic leagues. The initial tournament catalogue includes World Cup, UEFA Champions League, UEFA EURO and Copa América.
+PoolKick is a mobile-first social football prediction platform for private groups and tournament-based competitions.
 
-## Included
+## V2 client direction
 
-- Public landing page and product explanation
-- Player registration/login UI
-- Demo/local mode that works immediately with no credentials
-- Optional Supabase production mode
-- User profiles and avatar selection
+This revision follows Marlon's September 2026 product direction:
+
+- English, Spanish and French available at any time
+- Football newsfeed integrated into the product
+- Voluntary donation flow instead of advertising
+- No ads in the initial product
+- Temporary PoolKick name/logo kept configurable until the final identity is supplied
+- Mobile navigation inspired by social football apps, while keeping rankings and chat private to each pool
+- Supabase Realtime support for pool chat, match-result changes, prediction scoring and news updates
+
+## Core product
+
+- Public multilingual landing page
+- Supabase Auth production mode
+- Demo/local fallback only when Supabase environment variables are absent
+- Profiles and avatars
 - Tournament catalogue
-- Create pool / join by code
-- Exact-score predictions with kickoff locking
-- Automatic points calculation
-- Leaderboard and player statistics
-- Commissioner controls
-- Pool chat / reactions area
-- In-app notifications
+- Create private pool / join by code
+- Exact-score predictions
+- Server-side kickoff deadline guard
+- Hidden pre-kickoff picks via RLS
+- Automatic scoring and leaderboards
+- Private pool chat
+- Commissioner tools
 - Platform admin dashboard
-- Tournament activation/deactivation and match result administration
-- Bilingual EN/ES interface foundation
-- Full in-app User Manual
+- Multilingual football news editor
+- Public and authenticated news pages
+- Ad-free donation/support page
+- Full EN / ES / FR user manual
 - Netlify configuration
-- Supabase schema, RLS policies and seed data
+- Supabase schema, RLS and incremental V2 migration
 
-## Quick start
+## Local setup
 
 ```bash
 npm install
 npm run dev
 ```
 
-The app runs in **Demo Mode** when no Supabase keys are present. Demo Mode stores data in browser localStorage and is perfect for design review and user acceptance testing.
+Without Supabase credentials the app uses Demo Mode and browser localStorage.
 
 ### Demo accounts
 
 - `adrian@poolkick.demo` — player
 - `marlon@poolkick.demo` — platform administrator
 
-Any password is accepted in Demo Mode.
+Any password is accepted only in Demo Mode.
 
 ## Production with Supabase
 
-1. Create a Supabase project.
-2. Open SQL Editor and run `supabase/schema.sql`.
-3. Copy `.env.example` to `.env`.
-4. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
-5. Restart the dev server or deploy to Netlify.
-6. In Netlify, add both variables under **Site configuration → Environment variables**.
+Set these Netlify environment variables:
 
-The app automatically detects Supabase configuration. Demo Mode remains available as a fallback if credentials are absent.
+```
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=sb_publishable_...
+```
 
-## GitHub + Netlify deployment
+The variable name keeps `ANON_KEY` for code compatibility, but the value should be the modern Supabase publishable key.
 
-1. Create a new GitHub repository.
-2. Upload all files from this project root (do not upload the enclosing ZIP folder as a nested folder).
-3. Import the repository in Netlify.
-4. Netlify reads `netlify.toml` automatically.
-5. Build command: `npm run build`
-6. Publish directory: `dist`
-7. Add Supabase environment variables if production shared data is required.
+For a new project run:
+
+```
+supabase/schema.sql
+```
+
+For an existing V1 PoolKick database run only:
+
+```
+supabase/migrations/20260926_poolkick_v2.sql
+```
+
+The V2 migration adds `news_articles`, multilingual content fields, admin RLS and the Realtime publication entries used by comments, predictions, matches and news.
+
+## Admin role
+
+New Auth users start as `player`. Promote Marlon's production profile to `admin` directly in Supabase after his real account exists. Do not expose a browser-side "make me admin" control.
+
+## News strategy
+
+V2 uses a curated news table so PoolKick does not scrape or republish copyrighted articles. Administrators store short multilingual summaries and can link to the original source. A licensed football/news provider can later automate ingestion.
+
+## Donations
+
+`APP.donationUrl` in `src/config.js` is intentionally empty until Marlon chooses the final payment provider/link. The donation page is already live-ready and does not store card data.
 
 ## Branding
 
-The temporary brand is **PoolKick**. Marlon's final name, logo and colors can be replaced centrally in `src/config.js` and the CSS variables at the top of `src/styles.css`.
+The temporary name is **PoolKick**. When Marlon supplies the final identity, update centrally:
+
+- `src/config.js`
+- CSS brand variables
+- favicon / app icons
+- final logo asset
 
 ## Scoring defaults
 
-- Exact score: 5 points
-- Correct goal difference: 3 points
-- Correct winner/draw: 2 points
-- Incorrect: 0 points
+Classic 5–3–2:
+- Exact score: 5
+- Correct goal difference: 3
+- Correct winner/draw: 2
+- Wrong result: 0
 
-A commissioner can choose a simpler 3/1/0 preset when creating a pool. The database stores scoring rules per pool, so additional formats can be added without changing existing pools.
+Simple 3–1:
+- Exact score: 3
+- Correct winner/draw: 1
+- Wrong result: 0
 
-## Important product note
+## Product boundary
 
-PoolKick is designed as a social prediction game. It does not process wagers or prize money. Team crest/logo URLs are data fields; official logos should only be loaded from a licensed or otherwise permitted source.
+PoolKick is designed as a social prediction game. It does not process wagers or prize money.
