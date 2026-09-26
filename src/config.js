@@ -2,7 +2,11 @@ export const APP = {
   name: 'PoolKick',
   tagline: 'Predict. Compete. Brag.',
   supportEmail: 'support@poolkick.app',
-  version: '1.0.0',
+  version: '2.0.0',
+  brandStatus: 'temporary',
+  donationUrl: '',
+  adsEnabled: false,
+  supportedLocales: ['en','es','fr'],
 }
 
 export const SCORING_PRESETS = {
