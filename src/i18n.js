@@ -63,3 +63,47 @@ export function localizedField(item, field, locale='en') {
   if (!item) return ''
   return item[`${field}_${locale}`] || item[`${field}_en`] || item[field] || ''
 }
+
+
+const tournamentCopy = {
+  t1:{
+    en:{format:'48 teams · group stage + knockout',description:'The biggest national-team tournament in football.'},
+    es:{format:'48 equipos · fase de grupos + eliminación',description:'El torneo de selecciones más grande del fútbol.'},
+    fr:{format:'48 équipes · phase de groupes + élimination',description:'Le plus grand tournoi de sélections nationales de football.'}
+  },
+  t2:{
+    en:{format:'League phase + knockout',description:'Europe’s premier club competition.'},
+    es:{format:'Fase de liga + eliminación',description:'La principal competición de clubes de Europa.'},
+    fr:{format:'Phase de ligue + élimination',description:'La principale compétition de clubs en Europe.'}
+  },
+  t3:{
+    en:{format:'Group stage + knockout',description:'Europe’s national-team championship.'},
+    es:{format:'Fase de grupos + eliminación',description:'El campeonato europeo de selecciones.'},
+    fr:{format:'Phase de groupes + élimination',description:'Le championnat européen des sélections nationales.'}
+  },
+  t4:{
+    en:{format:'Group stage + knockout',description:'South America’s flagship national-team tournament.'},
+    es:{format:'Fase de grupos + eliminación',description:'El torneo principal de selecciones de Sudamérica.'},
+    fr:{format:'Phase de groupes + élimination',description:'Le tournoi phare des sélections nationales d’Amérique du Sud.'}
+  },
+}
+
+const footballLabels = {
+  'Group Stage':{es:'Fase de grupos',fr:'Phase de groupes'},
+  'League Phase':{es:'Fase de liga',fr:'Phase de ligue'},
+  'Matchday 1':{es:'Fecha 1',fr:'Journée 1'},
+  'Matchday 2':{es:'Fecha 2',fr:'Journée 2'},
+  'Completed':{es:'Finalizado',fr:'Terminé'},
+  'scheduled':{es:'programado',fr:'programmé'},
+  'live':{es:'en vivo',fr:'en direct'},
+  'finished':{es:'finalizado',fr:'terminé'},
+}
+
+export function tournamentText(id,field,locale='en',fallback=''){
+  return tournamentCopy[id]?.[locale]?.[field] || tournamentCopy[id]?.en?.[field] || fallback
+}
+
+export function footballText(value,locale='en'){
+  if(locale==='en')return value
+  return footballLabels[value]?.[locale] || value
+}
