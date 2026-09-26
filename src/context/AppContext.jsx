@@ -104,6 +104,38 @@ export function AppProvider({ children }) {
     return () => { active = false }
   }, [])
 
+  useEffect(() => {
+    if(mode!=='supabase' || !state.sessionUserId) return
+    const channel=supabase.channel(`poolkick-live-${state.sessionUserId}`)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'comments'},payload=>{
+        const x=payload.new
+        setState(s=>s.comments.some(c=>String(c.id)===String(x.id))?s:{...s,comments:[...s.comments,{...x,poolId:x.pool_id,userId:x.user_id,createdAt:x.created_at}]})
+      })
+      .on('postgres_changes',{event:'*',schema:'public',table:'predictions'},payload=>{
+        const x=payload.new
+        if(!x?.id)return
+        const mapped={...x,poolId:x.pool_id,matchId:x.match_id,userId:x.user_id,homeScore:x.home_score,awayScore:x.away_score}
+        setState(s=>({...s,predictions:[...s.predictions.filter(p=>String(p.id)!==String(x.id)),mapped]}))
+      })
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'matches'},payload=>{
+        const x=payload.new
+        const mapped={...x,tournamentId:x.tournament_id,homeTeamId:x.home_team_id,awayTeamId:x.away_team_id,homeScore:x.home_score,awayScore:x.away_score}
+        setState(s=>({...s,matches:s.matches.map(m=>m.id===x.id?mapped:m)}))
+      })
+      .on('postgres_changes',{event:'*',schema:'public',table:'news_articles'},payload=>{
+        const x=payload.new
+        if(payload.eventType==='DELETE'){
+          setState(s=>({...s,news:s.news.filter(n=>n.id!==payload.old.id)}))
+          return
+        }
+        if(!x?.id)return
+        const mapped={...x,publishedAt:x.published_at,sourceName:x.source_name,sourceUrl:x.source_url,imageUrl:x.image_url}
+        setState(s=>({...s,news:[mapped,...s.news.filter(n=>n.id!==x.id)]}))
+      })
+      .subscribe()
+    return ()=>{supabase.removeChannel(channel)}
+  },[mode,state.sessionUserId])
+
   const mutate = (fn) => setState(prev => recalculatePredictions(fn(clone(prev))))
   const currentUser = state.users.find(u => u.id === state.sessionUserId) || null
   const t = (key,vars={}) => translate(state.locale || 'en',key,vars)
