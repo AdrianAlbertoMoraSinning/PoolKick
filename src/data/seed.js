@@ -69,6 +69,32 @@ export const seedState = {
     { id:'pr9', poolId:'p1', matchId:'m1', userId:'u1', homeScore:2, awayScore:1, points:null },
     { id:'pr10', poolId:'p1', matchId:'m2', userId:'u1', homeScore:1, awayScore:1, points:null },
   ],
+  news: [
+    {
+      id:'news1', category:'world-cup', featured:true, status:'published', publishedAt:plusDays(-1),
+      title_en:'World Cup prediction hub is ready', title_es:'El centro de pronósticos del Mundial está listo', title_fr:'Le centre de pronostics de la Coupe du monde est prêt',
+      summary_en:'Create a private World Cup pool, invite friends and lock every score prediction at kickoff.',
+      summary_es:'Crea una quiniela privada del Mundial, invita amigos y bloquea cada pronóstico al inicio del partido.',
+      summary_fr:'Créez un pool privé pour la Coupe du monde, invitez vos amis et verrouillez chaque pronostic au coup d’envoi.',
+      sourceName:'PoolKick', sourceUrl:null, imageUrl:null
+    },
+    {
+      id:'news2', category:'champions', featured:false, status:'published', publishedAt:plusDays(-2),
+      title_en:'Champions League pools are open', title_es:'Ya puedes crear quinielas de Champions League', title_fr:'Les pools de Ligue des champions sont ouverts',
+      summary_en:'The tournament catalogue already supports a separate Champions League competition and leaderboard.',
+      summary_es:'El catálogo ya permite una competencia y ranking independiente para la Champions League.',
+      summary_fr:'Le catalogue prend déjà en charge une compétition et un classement distincts pour la Ligue des champions.',
+      sourceName:'PoolKick', sourceUrl:null, imageUrl:null
+    },
+    {
+      id:'news3', category:'platform', featured:false, status:'published', publishedAt:plusDays(-3),
+      title_en:'PoolKick launches ad-free', title_es:'PoolKick inicia sin publicidad', title_fr:'PoolKick démarre sans publicité',
+      summary_en:'The first release is designed without ads. Voluntary donations can support hosting and future improvements.',
+      summary_es:'La primera versión está diseñada sin anuncios. Las donaciones voluntarias pueden apoyar el hosting y futuras mejoras.',
+      summary_fr:'La première version est conçue sans publicité. Les dons volontaires peuvent soutenir l’hébergement et les futures améliorations.',
+      sourceName:'PoolKick', sourceUrl:null, imageUrl:null
+    },
+  ],
   comments: [
     { id:'c1', poolId:'p1', userId:'u2', text:'I’m calling a huge upset in Matchday 1 👀', createdAt:plusDays(-1) },
     { id:'c2', poolId:'p1', userId:'u3', text:'No copying picks after kickoff 😄', createdAt:plusDays(-1) },

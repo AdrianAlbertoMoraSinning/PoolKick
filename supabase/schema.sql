@@ -261,3 +261,360 @@ on conflict(id) do nothing;
 -- After creating Marlon's production user, promote it once with:
 -- Find Marlon's auth UUID in Authentication > Users, then run:
 -- update public.profiles set role='admin' where id='MARLON_AUTH_UUID_HERE';
+
+
+-- PoolKick V2: multilingual newsfeed + realtime updates
+-- Safe incremental migration for an existing V1 Supabase project.
+
+create table if not exists public.news_articles (
+  id text primary key,
+  category text not null default 'platform' check (category in ('world-cup','champions','copa','euro','platform')),
+  title_en text not null,
+  title_es text not null default '',
+  title_fr text not null default '',
+  summary_en text not null default '',
+  summary_es text not null default '',
+  summary_fr text not null default '',
+  source_name text not null default 'PoolKick',
+  source_url text,
+  image_url text,
+  featured boolean not null default false,
+  status text not null default 'published' check (status in ('draft','published','archived')),
+  published_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.news_articles enable row level security;
+
+drop policy if exists "news public read" on public.news_articles;
+create policy "news public read" on public.news_articles
+for select using (status='published' or public.is_admin(auth.uid()));
+
+drop policy if exists "admin news write" on public.news_articles;
+create policy "admin news write" on public.news_articles
+for all to authenticated
+using (public.is_admin(auth.uid()))
+with check (public.is_admin(auth.uid()));
+
+grant select on public.news_articles to anon, authenticated;
+grant insert, update, delete on public.news_articles to authenticated;
+
+insert into public.news_articles
+(id,category,title_en,title_es,title_fr,summary_en,summary_es,summary_fr,source_name,featured,status,published_at)
+values
+('news1','world-cup','World Cup prediction hub is ready','El centro de pronósticos del Mundial está listo','Le centre de pronostics de la Coupe du monde est prêt','Create a private World Cup pool, invite friends and lock every score prediction at kickoff.','Crea una quiniela privada del Mundial, invita amigos y bloquea cada pronóstico al inicio del partido.','Créez un pool privé pour la Coupe du monde, invitez vos amis et verrouillez chaque pronostic au coup d’envoi.','PoolKick',true,'published',now()-interval '1 day'),
+('news2','champions','Champions League pools are open','Ya puedes crear quinielas de Champions League','Les pools de Ligue des champions sont ouverts','The tournament catalogue already supports a separate Champions League competition and leaderboard.','El catálogo ya permite una competencia y ranking independiente para la Champions League.','Le catalogue prend déjà en charge une compétition et un classement distincts pour la Ligue des champions.','PoolKick',false,'published',now()-interval '2 days'),
+('news3','platform','PoolKick launches ad-free','PoolKick inicia sin publicidad','PoolKick démarre sans publicité','The first release is designed without ads. Voluntary donations can support hosting and future improvements.','La primera versión está diseñada sin anuncios. Las donaciones voluntarias pueden apoyar el hosting y futuras mejoras.','La première version est conçue sans publicité. Les dons volontaires peuvent soutenir l’hébergement et les futures améliorations.','PoolKick',false,'published',now()-interval '3 days')
+on conflict(id) do update set
+category=excluded.category,title_en=excluded.title_en,title_es=excluded.title_es,title_fr=excluded.title_fr,
+summary_en=excluded.summary_en,summary_es=excluded.summary_es,summary_fr=excluded.summary_fr,
+source_name=excluded.source_name,featured=excluded.featured,status=excluded.status;
+
+-- Postgres Changes powers live pool chat, score updates and news refreshes.
+do $$
+declare t text;
+begin
+  foreach t in array array['comments','predictions','matches','news_articles']
+  loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname='supabase_realtime' and schemaname='public' and tablename=t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I',t);
+    end if;
+  end loop;
+end $$;
+
+
+-- PoolKick V2 security and performance hardening
+
+create schema if not exists private;
+revoke all on schema private from public;
+grant usage on schema private to anon, authenticated;
+
+create or replace function private.is_admin(uid uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists(
+    select 1 from public.profiles
+    where id = uid and role = 'admin'
+  );
+$$;
+
+create or replace function private.is_pool_member(pid text, uid uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists(
+    select 1 from public.pool_members
+    where pool_id = pid and user_id = uid
+  );
+$$;
+
+revoke all on function private.is_admin(uuid) from public;
+revoke all on function private.is_pool_member(text,uuid) from public;
+grant execute on function private.is_admin(uuid) to anon, authenticated;
+grant execute on function private.is_pool_member(text,uuid) to authenticated;
+
+create or replace function private.join_pool_by_code_impl(join_code text)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  pid text;
+  uid uuid;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  select id into pid
+  from public.pools
+  where code = upper(trim(join_code))
+  limit 1;
+
+  if pid is null then return null; end if;
+
+  insert into public.pool_members(pool_id,user_id)
+  values(pid,uid)
+  on conflict do nothing;
+
+  return pid;
+end;
+$$;
+
+revoke all on function private.join_pool_by_code_impl(text) from public;
+grant execute on function private.join_pool_by_code_impl(text) to authenticated;
+
+create or replace function public.join_pool_by_code(join_code text)
+returns text
+language sql
+security invoker
+set search_path = ''
+as $$
+  select private.join_pool_by_code_impl(join_code);
+$$;
+
+revoke all on function public.join_pool_by_code(text) from public, anon;
+grant execute on function public.join_pool_by_code(text) to authenticated;
+
+create or replace function public.guard_prediction_deadline()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  ko timestamptz;
+begin
+  select kickoff into ko
+  from public.matches
+  where id = new.match_id;
+
+  if ko <= now() then
+    raise exception 'Prediction deadline has passed';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.handle_new_user() from public, anon, authenticated;
+revoke all on function public.on_match_finished() from public, anon, authenticated;
+revoke all on function public.recalculate_match_points(text) from public, anon, authenticated;
+revoke all on function public.rls_auto_enable() from public, anon, authenticated;
+
+drop policy if exists "pools member read" on public.pools;
+create policy "pools member read" on public.pools
+for select to authenticated
+using (
+  commissioner_id = (select auth.uid())
+  or private.is_pool_member(id,(select auth.uid()))
+  or private.is_admin((select auth.uid()))
+);
+
+drop policy if exists "members pool read" on public.pool_members;
+create policy "members pool read" on public.pool_members
+for select to authenticated
+using (
+  user_id = (select auth.uid())
+  or private.is_pool_member(pool_id,(select auth.uid()))
+  or private.is_admin((select auth.uid()))
+);
+
+drop policy if exists "predictions fair read" on public.predictions;
+create policy "predictions fair read" on public.predictions
+for select to authenticated
+using (
+  private.is_admin((select auth.uid()))
+  or (
+    private.is_pool_member(pool_id,(select auth.uid()))
+    and (
+      user_id = (select auth.uid())
+      or exists(
+        select 1 from public.matches m
+        where m.id = match_id and m.kickoff <= now()
+      )
+    )
+  )
+);
+
+drop policy if exists "comments member read" on public.comments;
+create policy "comments member read" on public.comments
+for select to authenticated
+using (
+  private.is_pool_member(pool_id,(select auth.uid()))
+  or private.is_admin((select auth.uid()))
+);
+
+drop policy if exists "own notifications read" on public.notifications;
+create policy "own notifications read" on public.notifications
+for select to authenticated
+using (
+  (select auth.uid()) = user_id
+  or private.is_admin((select auth.uid()))
+);
+
+drop policy if exists "profile owner update" on public.profiles;
+create policy "profile owner update" on public.profiles
+for update to authenticated
+using ((select auth.uid()) = id)
+with check ((select auth.uid()) = id);
+
+drop policy if exists "create pool" on public.pools;
+create policy "create pool" on public.pools
+for insert to authenticated
+with check ((select auth.uid()) = commissioner_id);
+
+drop policy if exists "commissioner update pool" on public.pools;
+create policy "commissioner update pool" on public.pools
+for update to authenticated
+using ((select auth.uid()) = commissioner_id)
+with check ((select auth.uid()) = commissioner_id);
+
+drop policy if exists "creator membership insert" on public.pool_members;
+create policy "creator membership insert" on public.pool_members
+for insert to authenticated
+with check (
+  (select auth.uid()) = user_id
+  and exists(
+    select 1 from public.pools p
+    where p.id = pool_id
+      and p.commissioner_id = (select auth.uid())
+  )
+);
+
+drop policy if exists "leave own pool" on public.pool_members;
+create policy "leave own pool" on public.pool_members
+for delete to authenticated
+using ((select auth.uid()) = user_id);
+
+drop policy if exists "own prediction insert" on public.predictions;
+create policy "own prediction insert" on public.predictions
+for insert to authenticated
+with check (
+  (select auth.uid()) = user_id
+  and private.is_pool_member(pool_id,(select auth.uid()))
+);
+
+drop policy if exists "own prediction update" on public.predictions;
+create policy "own prediction update" on public.predictions
+for update to authenticated
+using ((select auth.uid()) = user_id)
+with check (
+  (select auth.uid()) = user_id
+  and private.is_pool_member(pool_id,(select auth.uid()))
+);
+
+drop policy if exists "member comment insert" on public.comments;
+create policy "member comment insert" on public.comments
+for insert to authenticated
+with check (
+  (select auth.uid()) = user_id
+  and private.is_pool_member(pool_id,(select auth.uid()))
+);
+
+drop policy if exists "own notification update" on public.notifications;
+create policy "own notification update" on public.notifications
+for update to authenticated
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id);
+
+drop policy if exists "admin tournament write" on public.tournaments;
+create policy "admin tournament insert" on public.tournaments
+for insert to authenticated with check (private.is_admin((select auth.uid())));
+create policy "admin tournament update" on public.tournaments
+for update to authenticated
+using (private.is_admin((select auth.uid())))
+with check (private.is_admin((select auth.uid())));
+create policy "admin tournament delete" on public.tournaments
+for delete to authenticated
+using (private.is_admin((select auth.uid())));
+
+drop policy if exists "admin team write" on public.teams;
+create policy "admin team insert" on public.teams
+for insert to authenticated with check (private.is_admin((select auth.uid())));
+create policy "admin team update" on public.teams
+for update to authenticated
+using (private.is_admin((select auth.uid())))
+with check (private.is_admin((select auth.uid())));
+create policy "admin team delete" on public.teams
+for delete to authenticated
+using (private.is_admin((select auth.uid())));
+
+drop policy if exists "admin match write" on public.matches;
+create policy "admin match insert" on public.matches
+for insert to authenticated with check (private.is_admin((select auth.uid())));
+create policy "admin match update" on public.matches
+for update to authenticated
+using (private.is_admin((select auth.uid())))
+with check (private.is_admin((select auth.uid())));
+create policy "admin match delete" on public.matches
+for delete to authenticated
+using (private.is_admin((select auth.uid())));
+
+drop policy if exists "news public read" on public.news_articles;
+create policy "news public read" on public.news_articles
+for select
+using (
+  status = 'published'
+  or private.is_admin((select auth.uid()))
+);
+
+drop policy if exists "admin news write" on public.news_articles;
+create policy "admin news insert" on public.news_articles
+for insert to authenticated with check (private.is_admin((select auth.uid())));
+create policy "admin news update" on public.news_articles
+for update to authenticated
+using (private.is_admin((select auth.uid())))
+with check (private.is_admin((select auth.uid())));
+create policy "admin news delete" on public.news_articles
+for delete to authenticated
+using (private.is_admin((select auth.uid())));
+
+create index if not exists idx_comments_pool_id on public.comments(pool_id);
+create index if not exists idx_comments_user_id on public.comments(user_id);
+create index if not exists idx_matches_away_team_id on public.matches(away_team_id);
+create index if not exists idx_matches_home_team_id on public.matches(home_team_id);
+create index if not exists idx_matches_tournament_id on public.matches(tournament_id);
+create index if not exists idx_notifications_user_id on public.notifications(user_id);
+create index if not exists idx_pool_members_user_id on public.pool_members(user_id);
+create index if not exists idx_pools_commissioner_id on public.pools(commissioner_id);
+create index if not exists idx_pools_tournament_id on public.pools(tournament_id);
+create index if not exists idx_predictions_match_id on public.predictions(match_id);
+create index if not exists idx_predictions_user_id on public.predictions(user_id);
+create index if not exists idx_teams_tournament_id on public.teams(tournament_id);
+create index if not exists idx_news_status_published_at on public.news_articles(status,published_at desc);
+
+drop function if exists public.is_admin(uuid);
+drop function if exists public.is_pool_member(text,uuid);
