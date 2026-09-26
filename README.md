@@ -69,13 +69,14 @@ For a new project run:
 supabase/schema.sql
 ```
 
-For an existing V1 PoolKick database run only:
+For an existing V1 PoolKick database run the migrations in order:
 
 ```
 supabase/migrations/20260926_poolkick_v2.sql
+supabase/migrations/20260926_poolkick_v2_hardening.sql
 ```
 
-The V2 migration adds `news_articles`, multilingual content fields, admin RLS and the Realtime publication entries used by comments, predictions, matches and news.
+The first V2 migration adds `news_articles`, multilingual content fields and the Realtime publication entries used by comments, predictions, matches and news. The hardening migration tightens SECURITY DEFINER exposure, optimizes RLS evaluation and adds covering indexes for the main foreign-key access paths.
 
 ## Admin role
 
