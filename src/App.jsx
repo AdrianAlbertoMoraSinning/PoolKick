@@ -12,6 +12,8 @@ import Admin from './pages/Admin'
 import Manual from './pages/Manual'
 import News from './pages/News'
 import Support from './pages/Support'
+import Rankings from './pages/Rankings'
+import LiveScores from './pages/LiveScores'
 
 function Protected(){
   const {currentUser,loading,connectionError,t}=useApp()
@@ -28,6 +30,8 @@ export default function App(){return <Routes>
   <Route element={<Protected/>}>
     <Route path="/dashboard" element={<Dashboard/>}/>
     <Route path="/news" element={<News/>}/>
+    <Route path="/live" element={<LiveScores/>}/>
+    <Route path="/rankings" element={<Rankings/>}/>
     <Route path="/tournaments" element={<Tournaments/>}/>
     <Route path="/pools" element={<Pools/>}/>
     <Route path="/pools/:id" element={<PoolDetail/>}/>
