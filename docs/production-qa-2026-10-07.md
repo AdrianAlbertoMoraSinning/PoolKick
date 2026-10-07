@@ -62,3 +62,11 @@ The public production news loaded in the cloud browser, but a secure sign-in att
 - Applied fixed_pool_rules migration: authenticated clients cannot change a pool's scoring, tournament, creator, ID or creation timestamp after creation. Pool name/code/visibility updates retain existing row policies. The expanded database suite passed all 13 checks, including attempted scoring/tournament changes; transaction fixtures and profile edits were rolled back, with zero QA rows remaining.
 - sports-sync version 4 is ACTIVE and continues to reject anonymous requests with HTTP 401. Real admin-authorized provider synchronization is still pending.
 - Donate was verified in the live public page: the payment action is disabled and explicitly says that Marlon must supply the final payment link.
+
+## Authorized simulation
+
+Executed 33 React component interaction scenarios using isolated demo fixtures in jsdom (11 scenarios in each of EN/ES/FR). Covers forms, route changes, saves, error feedback, local persistence, role navigation, automatic points, Rankings, Live Scores filters, news publication/archive and mobile menu state. Added `npm run test:simulation` to CI. Fixed demo Rankings returning an empty list; production continues to use Supabase RPCs.
+
+Executed 11 additional production-schema SQL role scenarios with four fictitious users without credentials. Authenticated identities and RLS were simulated inside one rolled-back transaction; this does not exercise real Auth or browser HTTP. Verified member/nonmember isolation, hidden opponent picks, edit restrictions, role/result restrictions, profile/chat writes, exact/difference points and both ranking RPCs. Independent cleanup query found zero simulation auth users, profiles, matches or pools remaining. Marlon's account was untouched.
+
+Simulation is approved within these boundaries. Production login, mobile CSS/device acceptance, provider synchronization and payment activation remain open. Detailed Spanish evidence: `docs/simulacion-qa-2026-10-07.md`.

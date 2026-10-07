@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useRef } from 'react'
 import { seedState } from '../data/seed'
-import { recalculatePredictions } from '../lib/scoring'
+import { recalculatePredictions, rankingsForState } from '../lib/scoring'
 import { hasSupabase, supabase } from '../lib/supabase'
 import { translate } from '../i18n'
 import { predictionOpen, validScores, qaCopy, syncSummary } from '../lib/qa'
@@ -293,7 +293,7 @@ export function AppProvider({ children }) {
   }
 
   async function getRankings(tournamentId=null){
-    if(mode==='demo') return []
+    if(mode==='demo') return rankingsForState(state,tournamentId)
     const fn=tournamentId?'get_tournament_rankings':'get_global_rankings'
     const args=tournamentId?{p_tournament_id:tournamentId}:{}
     const {data,error}=await supabase.rpc(fn,args);if(error)throw error;return data||[]

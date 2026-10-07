@@ -15,6 +15,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run test:render
+      - run: npm run test:simulation
       - name: Build
         id: build
         shell: bash

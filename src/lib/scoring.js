@@ -46,3 +46,17 @@ export function standingsForPool(state, poolId) {
     }
   }).sort((a,b) => b.points - a.points || b.exact - a.exact || a.user.displayName.localeCompare(b.user.displayName))
 }
+
+export function rankingsForState(state, tournamentId=null) {
+  const pools=state.pools.filter(p=>!tournamentId||p.tournamentId===tournamentId)
+  return state.users.map(user=>{
+    const memberships=pools.filter(p=>p.members.includes(user.id))
+    const picks=state.predictions.filter(p=>p.userId===user.id&&memberships.some(pool=>pool.id===p.poolId))
+    return {user_id:user.id,display_name:user.displayName,avatar:user.avatar,
+      total_points:picks.reduce((n,p)=>n+(p.points||0),0),
+      exact_scores:picks.filter(p=>p.points===(memberships.find(pool=>pool.id===p.poolId)?.scoring==='simple'?3:5)).length,
+      correct_predictions:picks.filter(p=>p.points>0).length,pools_played:memberships.length}
+  }).filter(row=>!tournamentId||row.pools_played>0)
+    .sort((a,b)=>b.total_points-a.total_points||b.exact_scores-a.exact_scores||b.correct_predictions-a.correct_predictions||a.display_name.localeCompare(b.display_name))
+    .map((row,index)=>({...row,rank:index+1}))
+}
