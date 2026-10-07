@@ -1,103 +1,130 @@
-# PoolKick V2 — Football Prediction Pools
+# PoolKick V3 — Football Prediction Pools
 
 PoolKick is a mobile-first social football prediction platform for private groups and tournament-based competitions.
 
-## V2 client direction
+## Client direction
 
-This revision follows Marlon's September 2026 product direction:
+The current product follows Marlon's requests:
 
 - English, Spanish and French available at any time
 - Football newsfeed integrated into the product
 - Voluntary donation flow instead of advertising
 - No ads in the initial product
 - Temporary PoolKick name/logo kept configurable until the final identity is supplied
-- Mobile navigation inspired by social football apps, while keeping rankings and chat private to each pool
+- Private pools, chat, predictions and automatic scoring
+- Global and tournament player rankings
+- Real team and tournament artwork when supplied by the sports data provider
+- Live/results center inspired by mainstream score apps, without copying their UI or branding
+- Automatic sports-data synchronization when an administrator creates or activates a configured tournament
 - Supabase Realtime support for pool chat, match-result changes, prediction scoring and news updates
 
 ## Core product
 
 - Public multilingual landing page
 - Supabase Auth production mode
-- Demo/local fallback only when Supabase environment variables are absent
 - Profiles and avatars
 - Tournament catalogue
 - Create private pool / join by code
+- Atomic pool creation: pool + commissioner membership are committed together
 - Exact-score predictions
 - Server-side kickoff deadline guard
 - Hidden pre-kickoff picks via RLS
-- Automatic scoring and leaderboards
+- Automatic scoring and pool leaderboards
+- Global and tournament rankings
 - Private pool chat
+- Live Scores / Results center
+- Team and tournament logos from the sports provider
 - Commissioner tools
 - Platform admin dashboard
+- Automatic tournament sports sync
 - Multilingual football news editor
 - Public and authenticated news pages
 - Ad-free donation/support page
-- Full EN / ES / FR user manual
-- Netlify configuration
-- Supabase schema, RLS and incremental V2 migration
+- EN / ES / FR interface and manual
+- Netlify + Supabase production architecture
 
-## Local setup
+## Sports data
 
-```bash
-npm install
-npm run dev
+PoolKick V3 includes a Supabase Edge Function at:
+
+```text
+supabase/functions/sports-sync/index.ts
 ```
 
-Without Supabase credentials the app uses Demo Mode and browser localStorage.
+The current provider is **TheSportsDB**. The integration stores provider IDs in PoolKick rather than coupling pool/scoring logic to the external API.
 
-### Demo accounts
+When an administrator adds a tournament in Admin, PoolKick stores:
 
-- `adrian@poolkick.demo` — player
-- `marlon@poolkick.demo` — platform administrator
+- provider league ID
+- provider season
+- tournament metadata
 
-Any password is accepted only in Demo Mode.
+and immediately runs the sports sync. The sync can populate:
+
+- tournament artwork
+- teams
+- team logos
+- fixtures
+- kickoff timestamps
+- scores/results
+- match status
+- venue/provider metadata
+
+The Admin panel also includes manual **Sync now** controls for one tournament or all configured tournaments.
+
+### Free-provider limitation
+
+The initial TheSportsDB integration can operate with the provider's free API key, but the free API returns limited schedule/team result sets. Full LiveScore-style depth and frequent live-score coverage should use a paid sports-data plan or another licensed provider. The PoolKick database layer is designed so the provider can be upgraded without replacing pool, prediction or ranking logic.
 
 ## Production with Supabase
 
-Set these Netlify environment variables:
+Netlify uses:
 
-```
+```text
 VITE_SUPABASE_URL=...
 VITE_SUPABASE_ANON_KEY=sb_publishable_...
 ```
 
-The variable name keeps `ANON_KEY` for code compatibility, but the value should be the modern Supabase publishable key.
+For an existing PoolKick production database, the current migrations are:
 
-For a new project run:
-
-```
-supabase/schema.sql
-```
-
-For an existing V1 PoolKick database run the migrations in order:
-
-```
+```text
 supabase/migrations/20260926_poolkick_v2.sql
 supabase/migrations/20260926_poolkick_v2_hardening.sql
+supabase/migrations/20261006_poolkick_v3_live_rankings.sql
 ```
 
-The first V2 migration adds `news_articles`, multilingual content fields and the Realtime publication entries used by comments, predictions, matches and news. The hardening migration tightens SECURITY DEFINER exposure, optimizes RLS evaluation and adds covering indexes for the main foreign-key access paths.
+V3 adds sports-provider metadata, atomic pool creation and ranking RPCs.
+
+## Pool creation fix
+
+V3 uses the authenticated RPC:
+
+```text
+create_pool_with_member(...)
+```
+
+The pool and its commissioner membership are written in the same database transaction. This prevents the previous condition where a pool could exist but not appear to its creator because the `pool_members` insert failed separately.
+
+## Rankings
+
+Authenticated users have a dedicated **Rankings** tab. Rankings can be viewed:
+
+- overall
+- by tournament
+
+The ranking RPCs return aggregated statistics only and do not expose hidden pre-kickoff predictions.
 
 ## Admin role
 
-New Auth users start as `player`. Promote Marlon's production profile to `admin` directly in Supabase after his real account exists. Do not expose a browser-side "make me admin" control.
-
-## News strategy
-
-V2 uses a curated news table so PoolKick does not scrape or republish copyrighted articles. Administrators store short multilingual summaries and can link to the original source. A licensed football/news provider can later automate ingestion.
+Marlon Molina's production account is the platform administrator. Admin can manage tournaments, synchronize sports data, enter/override results where needed, and publish multilingual news.
 
 ## Donations
 
-`APP.donationUrl` in `src/config.js` is intentionally empty until Marlon chooses the final payment provider/link. The donation page is already live-ready and does not store card data.
+`APP.donationUrl` in `src/config.js` remains empty until Marlon selects the final payment provider/link. PoolKick does not store card data.
 
 ## Branding
 
-The temporary name is **PoolKick**. When Marlon supplies the final identity, update centrally:
-
-- `src/config.js`
-- CSS brand variables
-- favicon / app icons
-- final logo asset
+The current name **PoolKick** remains temporary. The final name/logo can be replaced centrally after Marlon supplies the final identity.
 
 ## Scoring defaults
 
@@ -114,4 +141,4 @@ Simple 3–1:
 
 ## Product boundary
 
-PoolKick is designed as a social prediction game. It does not process wagers or prize money.
+PoolKick is a social prediction game. It does not process wagers or prize money.

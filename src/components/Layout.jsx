@@ -1,13 +1,15 @@
 import React, {useState} from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { Bell, BookOpen, CircleUserRound, Gauge, Heart, LogOut, Menu, Newspaper, Shield, Trophy, UsersRound, X } from 'lucide-react'
+import { Bell, BookOpen, CircleUserRound, Gauge, Heart, ListOrdered, LogOut, Menu, Newspaper, Radio, Shield, Trophy, UsersRound, X } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { APP } from '../config'
 import { Button } from './UI'
 import LanguageSwitcher from './LanguageSwitcher'
+import { featureCopy } from '../featureCopy'
 
 export default function Layout(){
   const {currentUser,state,logout,markNotificationsRead,mode,t}=useApp()
+  const c=featureCopy(state.locale)
   const nav=useNavigate()
   const [open,setOpen]=useState(false)
   const [bells,setBells]=useState(false)
@@ -15,6 +17,8 @@ export default function Layout(){
   const unread=notices.filter(n=>!n.read).length
   const links=[
     ['/dashboard',Gauge,t('nav.dashboard')],
+    ['/live',Radio,c.live],
+    ['/rankings',ListOrdered,c.rankings],
     ['/news',Newspaper,t('nav.news')],
     ['/tournaments',Trophy,t('nav.tournaments')],
     ['/pools',UsersRound,t('nav.pools')],
@@ -23,7 +27,7 @@ export default function Layout(){
     ['/manual',BookOpen,t('nav.manual')]
   ]
   if(currentUser?.role==='admin') links.push(['/admin',Shield,t('nav.admin')])
-  const mobileLinks=links.filter(([to])=>['/dashboard','/news','/tournaments','/pools'].includes(to))
+  const mobileLinks=links.filter(([to])=>['/dashboard','/live','/rankings','/pools'].includes(to))
   const doLogout=async()=>{await logout();nav('/')}
 
   return <div className="app-shell">
