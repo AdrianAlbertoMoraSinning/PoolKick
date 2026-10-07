@@ -1,4 +1,4 @@
-import { SCORING_PRESETS } from '../config'
+import { SCORING_PRESETS } from '../config.js'
 
 export function outcome(a, b) {
   if (a === b) return 'D'
@@ -6,7 +6,7 @@ export function outcome(a, b) {
 }
 
 export function calculatePoints(prediction, match, scoringKey = 'classic') {
-  if (match.status !== 'finished' || prediction == null) return null
+  if (!match || match.status !== 'finished' || prediction == null || match.homeScore == null || match.awayScore == null) return null
   const rules = SCORING_PRESETS[scoringKey] || SCORING_PRESETS.classic
   const ph = Number(prediction.homeScore)
   const pa = Number(prediction.awayScore)
@@ -21,11 +21,11 @@ export function calculatePoints(prediction, match, scoringKey = 'classic') {
 export function recalculatePredictions(state) {
   const poolMap = Object.fromEntries(state.pools.map(p => [p.id, p]))
   const matchMap = Object.fromEntries(state.matches.map(m => [m.id, m]))
-  return state.predictions.map(p => {
+  return {...state, predictions: state.predictions.map(p => {
     const pool = poolMap[p.poolId]
     const match = matchMap[p.matchId]
     return { ...p, points: calculatePoints(p, match, pool?.scoring) }
-  })
+  })}
 }
 
 export function standingsForPool(state, poolId) {
@@ -38,7 +38,7 @@ export function standingsForPool(state, poolId) {
     const points = scored.reduce((sum, p) => sum + p.points, 0)
     const exactValue = (pool.scoring === 'simple' ? 3 : 5)
     return {
-      user: users[userId],
+      user: users[userId] || {id:userId,displayName:'—',avatar:'⚽'},
       points,
       exact: scored.filter(p => p.points === exactValue).length,
       correct: scored.filter(p => p.points > 0).length,

@@ -5,6 +5,8 @@ import { Button, Card, Pill, TeamMark, TournamentMark } from '../components/UI'
 import { featureCopy } from '../featureCopy'
 import { localeTag } from '../i18n'
 
+import { syncSummary } from '../lib/qa'
+
 export default function LiveScores(){
  const {state,currentUser,syncAllSports}=useApp()
  const c=featureCopy(state.locale)
@@ -16,7 +18,7 @@ export default function LiveScores(){
  const tour=id=>state.tournaments.find(t=>t.id===id)
  const loc=localeTag(state.locale)
  const rows=useMemo(()=>[...state.matches].filter(m=>m.externalId||m.external_id).filter(m=>tournament==='all'||m.tournamentId===tournament).filter(m=>filter==='all'||(filter==='live'?m.status==='live':filter==='finished'?m.status==='finished':filter==='upcoming'?['scheduled','postponed'].includes(m.status):true)).sort((a,b)=>filter==='finished'?new Date(b.kickoff)-new Date(a.kickoff):new Date(a.kickoff)-new Date(b.kickoff)),[state.matches,tournament,filter])
- const sync=async()=>{setBusy(true);setMessage('');try{const r=await syncAllSports();const n=(r?.results||[]).reduce((s,x)=>s+(x.matches||0),0);setMessage(`✓ ${n} matches synced`)}catch(e){setMessage(e.message||'Sync failed')}finally{setBusy(false)}}
+ const sync=async()=>{setBusy(true);setMessage('');try{const r=await syncAllSports();setMessage(syncSummary(r,state.locale))}catch(e){setMessage(e.message||'Sync failed')}finally{setBusy(false)}}
  return <><div className="page-head live-head"><div><span className="eyebrow"><Radio size={14}/> {c.realData}</span><h1>{c.liveTitle}</h1><p>{c.liveText}</p></div>{currentUser?.role==='admin'&&<Button variant="secondary" onClick={sync} disabled={busy}><RefreshCw size={16} className={busy?'spin':''}/>{busy?c.syncing:c.sync}</Button>}</div>
  {message&&<div className="sync-message">{message}</div>}
  <div className="score-toolbar"><div className="score-tabs">{[['all',c.all],['live',c.liveNow],['finished',c.finished],['upcoming',c.upcoming]].map(([id,label])=><button key={id} className={filter===id?'active':''} onClick={()=>setFilter(id)}>{id==='live'&&<span className="live-dot"/>}{label}</button>)}</div><select value={tournament} onChange={e=>setTournament(e.target.value)}><option value="all">{c.all}</option>{state.tournaments.map(t=><option key={t.id} value={t.id}>{t.name} {t.edition}</option>)}</select></div>

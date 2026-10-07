@@ -3,6 +3,7 @@ import { seedState } from '../data/seed'
 import { recalculatePredictions } from '../lib/scoring'
 import { hasSupabase, supabase } from '../lib/supabase'
 import { translate } from '../i18n'
+import { predictionOpen, validScores, qaCopy, syncSummary } from '../lib/qa'
 
 const KEY = 'poolkick_state_v3'
 const Ctx = createContext(null)
@@ -15,15 +16,17 @@ const mapMatch=x=>({...x,tournamentId:x.tournament_id,homeTeamId:x.home_team_id,
 const mapNews=x=>({...x,publishedAt:x.published_at,sourceName:x.source_name,sourceUrl:x.source_url,imageUrl:x.image_url})
 
 function blankPrivateState(base){
-  return {...base,sessionUserId:null,users:[],pools:[],predictions:[],comments:[],notifications:[]}
+  return {...base,tournaments:[],teams:[],matches:[],news:[],sessionUserId:null,users:[],pools:[],predictions:[],comments:[],notifications:[]}
 }
 
 export function AppProvider({ children }) {
   const [state, setState] = useState(() => {
-    const locale = localStorage.getItem('poolkick_locale') || 'en'
+    const savedLocale = localStorage.getItem('poolkick_locale')
+    const locale = ['en','es','fr'].includes(savedLocale)?savedLocale:'en'
     if (hasSupabase) return blankPrivateState({...clone(seedState),locale})
     const saved = localStorage.getItem(KEY)
-    return saved ? {...JSON.parse(saved),locale} : {...clone(seedState),locale}
+    try { const parsed=saved&&JSON.parse(saved); if(parsed&&Array.isArray(parsed.users)) return {...parsed,locale} } catch {}
+    return {...clone(seedState),locale}
   })
   const [loading, setLoading] = useState(hasSupabase)
   const [mode] = useState(hasSupabase ? 'supabase' : 'demo')
@@ -66,6 +69,7 @@ export function AppProvider({ children }) {
         select('profiles'),select('pools'),select('pool_members'),select('predictions'),select('comments'),select('notifications'),
       ])
       const pools = poolsRows.map(p => ({...p,commissionerId:p.commissioner_id,tournamentId:p.tournament_id,createdAt:p.created_at,members:poolMembers.filter(pm=>pm.pool_id===p.id).map(pm=>pm.user_id)}))
+      if(!profiles.some(p=>p.id===session.user.id)) throw new Error('Account profile is unavailable.')
       setState({
         ...sports,
         sessionUserId:session.user.id,
@@ -83,6 +87,7 @@ export function AppProvider({ children }) {
   }
 
   useEffect(()=>{boot()},[])
+  useEffect(()=>{document.documentElement.lang=state.locale||'en'},[state.locale])
 
   useEffect(() => {
     if(mode!=='supabase' || !state.sessionUserId) return
@@ -146,12 +151,18 @@ export function AppProvider({ children }) {
     mutate(s=>{s.users.push(user);s.sessionUserId=user.id;return s});return {needsConfirmation:false}
   }
 
-  async function logout(){if(mode==='supabase') await supabase.auth.signOut();setState(s=>({...s,sessionUserId:null,users:mode==='supabase'?[]:s.users}))}
+  async function logout(){if(mode==='supabase'){const {error}=await supabase.auth.signOut();if(error)throw error;setState(s=>blankPrivateState(s));await refreshSportsData()}else setState(s=>({...s,sessionUserId:null}))}
   function setLocale(locale){localStorage.setItem('poolkick_locale',locale);document.documentElement.lang=locale;setState(s=>({...s,locale}))}
 
   async function updateProfile(patch){
-    mutate(s=>{const u=s.users.find(x=>x.id===s.sessionUserId);if(u)Object.assign(u,patch);return s})
-    if(mode==='supabase'&&currentUser){const {error}=await supabase.from('profiles').update({display_name:patch.displayName,avatar:patch.avatar,country:patch.country,country_flag:patch.countryFlag,favorite_team:patch.favoriteTeam}).eq('id',currentUser.id);if(error)throw error}
+    const clean={...patch,displayName:patch.displayName?.trim()}
+    if(!clean.displayName) throw new Error(qaCopy(state.locale).failed)
+    if(mode==='supabase'&&currentUser){
+      const {data,error}=await supabase.from('profiles').update({display_name:clean.displayName,avatar:clean.avatar,country:clean.country,country_flag:clean.countryFlag,favorite_team:clean.favoriteTeam}).eq('id',currentUser.id).select('id').single()
+      if(error)throw error
+      if(!data)throw new Error(qaCopy(state.locale).failed)
+    }
+    mutate(s=>{const u=s.users.find(x=>x.id===s.sessionUserId);if(u)Object.assign(u,clean);return s})
   }
 
   async function createPool({tournamentId,name,scoring='classic',visibility='private'}){
@@ -175,9 +186,12 @@ export function AppProvider({ children }) {
   }
 
   async function savePrediction(poolId,matchId,homeScore,awayScore){
-    const match=state.matches.find(m=>m.id===matchId);if(!match||new Date(match.kickoff)<=new Date())return false
+    if(!validScores(homeScore,awayScore))throw new Error(qaCopy(state.locale).invalid)
+    const match=state.matches.find(m=>m.id===matchId);if(!predictionOpen(match))throw new Error(qaCopy(state.locale).locked)
     if(mode==='supabase'){
-      const {error}=await supabase.from('predictions').upsert({pool_id:poolId,match_id:matchId,user_id:state.sessionUserId,home_score:Number(homeScore),away_score:Number(awayScore)},{onConflict:'pool_id,match_id,user_id'});if(error)throw error
+      const {data,error}=await supabase.from('predictions').upsert({pool_id:poolId,match_id:matchId,user_id:state.sessionUserId,home_score:Number(homeScore),away_score:Number(awayScore)},{onConflict:'pool_id,match_id,user_id'}).select().single();if(error)throw error
+      const mapped={...data,poolId:data.pool_id,matchId:data.match_id,userId:data.user_id,homeScore:data.home_score,awayScore:data.away_score}
+      setState(s=>({...s,predictions:[...s.predictions.filter(p=>String(p.id)!==String(data.id)),mapped]}))
       return true
     }
     mutate(s=>{const rec=s.predictions.find(p=>p.poolId===poolId&&p.matchId===matchId&&p.userId===s.sessionUserId);if(rec){rec.homeScore=Number(homeScore);rec.awayScore=Number(awayScore)}else s.predictions.push({id:uid('pr'),poolId,matchId,userId:s.sessionUserId,homeScore:Number(homeScore),awayScore:Number(awayScore),points:null});return s});return true
@@ -185,7 +199,7 @@ export function AppProvider({ children }) {
 
   async function addComment(poolId,text){
     if(!text.trim())return
-    if(mode==='supabase'){const {error}=await supabase.from('comments').insert({pool_id:poolId,user_id:state.sessionUserId,text:text.trim()});if(error)throw error;return}
+    if(mode==='supabase'){const {data,error}=await supabase.from('comments').insert({pool_id:poolId,user_id:state.sessionUserId,text:text.trim()}).select().single();if(error)throw error;const mapped={...data,poolId:data.pool_id,userId:data.user_id,createdAt:data.created_at};setState(s=>({...s,comments:[...s.comments.filter(c=>String(c.id)!==String(data.id)),mapped]}));return}
     const c={id:uid('c'),poolId,userId:state.sessionUserId,text:text.trim(),createdAt:new Date().toISOString()};mutate(s=>{s.comments.push(c);return s})
   }
 
@@ -194,7 +208,7 @@ export function AppProvider({ children }) {
     const {data,error}=await supabase.functions.invoke('sports-sync',{body:{action:'sync_tournament',tournamentId:id}})
     if(error) throw error
     if(data?.error) throw new Error(data.error)
-    await refreshSportsData();return data
+    await refreshSportsData();syncSummary(data,state.locale);return data
   }
 
   async function syncAllSports(){
@@ -202,7 +216,7 @@ export function AppProvider({ children }) {
     const {data,error}=await supabase.functions.invoke('sports-sync',{body:{action:'sync_all'}})
     if(error) throw error
     if(data?.error) throw new Error(data.error)
-    await refreshSportsData();return data
+    await refreshSportsData();syncSummary(data,state.locale);return data
   }
 
   async function addTournament({name,shortName,edition,providerLeagueId,providerSeason,status='active',icon='🏆',accent='#0f8069'}){
@@ -212,8 +226,8 @@ export function AppProvider({ children }) {
       const {data,error}=await supabase.from('tournaments').insert({id,slug,name,short_name:shortName||name.slice(0,8),edition,icon,accent,status,format:'Synced from sports provider',description:'Fixtures, teams and results sync automatically.',provider:'thesportsdb',provider_league_id:String(providerLeagueId),provider_season:String(providerSeason),sync_enabled:true}).select().single()
       if(error) throw error
       setState(s=>({...s,tournaments:[...s.tournaments,mapTournament(data)]}))
-      await syncTournament(id)
-      return mapTournament(data)
+      let warning='';try{await syncTournament(id)}catch(e){warning=e.message}
+      return {...mapTournament(data),syncWarning:warning}
     }
     const tournament={id,slug:id,name,shortName:shortName||name,edition,icon,accent,status,format:'Synced',description:'',providerLeagueId,providerSeason};mutate(s=>{s.tournaments.push(tournament);return s});return tournament
   }
@@ -222,18 +236,25 @@ export function AppProvider({ children }) {
     const row=state.tournaments.find(x=>x.id===id);if(!row)return
     const next=row.status==='active'?'coming':'active'
     if(mode==='supabase'){
-      const {error}=await supabase.from('tournaments').update({status:next}).eq('id',id);if(error)throw error
+      const {error}=await supabase.from('tournaments').update({status:next}).eq('id',id).select('id').single();if(error)throw error
       setState(s=>({...s,tournaments:s.tournaments.map(x=>x.id===id?{...x,status:next}:x)}))
       if(next==='active'&&row.providerLeagueId) await syncTournament(id)
     }else mutate(s=>{const x=s.tournaments.find(x=>x.id===id);x.status=next;return s})
   }
 
   async function setMatchResult(matchId,homeScore,awayScore){
-    if(mode==='supabase'){const {error}=await supabase.from('matches').update({home_score:Number(homeScore),away_score:Number(awayScore),status:'finished'}).eq('id',matchId);if(error)throw error;return}
+    if(!validScores(homeScore,awayScore))throw new Error(qaCopy(state.locale).invalid)
+    if(mode==='supabase'){
+      const {data,error}=await supabase.from('matches').update({home_score:Number(homeScore),away_score:Number(awayScore),status:'finished'}).eq('id',matchId).select().single();if(error)throw error
+      setState(s=>({...s,matches:s.matches.map(m=>m.id===matchId?mapMatch(data):m)}));await boot();return
+    }
     mutate(s=>{const m=s.matches.find(x=>x.id===matchId);m.homeScore=Number(homeScore);m.awayScore=Number(awayScore);m.status='finished';return s})
   }
 
-  function markNotificationsRead(){mutate(s=>{s.notifications.filter(n=>n.userId===s.sessionUserId).forEach(n=>n.read=true);return s});if(mode==='supabase'&&state.sessionUserId)supabase.from('notifications').update({read:true}).eq('user_id',state.sessionUserId)}
+  async function markNotificationsRead(){
+    if(mode==='supabase'&&state.sessionUserId){const {error}=await supabase.from('notifications').update({read:true}).eq('user_id',state.sessionUserId);if(error)throw error}
+    mutate(s=>{s.notifications.filter(n=>n.userId===s.sessionUserId).forEach(n=>n.read=true);return s})
+  }
 
   async function getRankings(tournamentId=null){
     if(mode==='demo') return []
@@ -246,10 +267,15 @@ export function AppProvider({ children }) {
     const record={...article,id:article.id||uid('news'),publishedAt:article.publishedAt||new Date().toISOString()}
     if(mode==='demo'){mutate(s=>{const i=s.news.findIndex(n=>n.id===record.id);if(i>=0)s.news[i]=record;else s.news.unshift(record);return s});return record}
     const payload={id:record.id,category:record.category||'platform',title_en:record.title_en||'',title_es:record.title_es||'',title_fr:record.title_fr||'',summary_en:record.summary_en||'',summary_es:record.summary_es||'',summary_fr:record.summary_fr||'',source_name:record.sourceName||'',source_url:record.sourceUrl||null,image_url:record.imageUrl||null,featured:Boolean(record.featured),status:record.status||'published',published_at:record.publishedAt}
-    const {error}=await supabase.from('news_articles').upsert(payload);if(error)throw error;setState(s=>({...s,news:[record,...s.news.filter(n=>n.id!==record.id)]}));return record
+    const {data,error}=await supabase.from('news_articles').upsert(payload).select().single();if(error)throw error;const saved=mapNews(data);setState(s=>({...s,news:[saved,...s.news.filter(n=>n.id!==saved.id)]}));return saved
   }
 
-  async function deleteNews(id){if(mode==='demo'){mutate(s=>{s.news=s.news.filter(n=>n.id!==id);return s});return}const {error}=await supabase.from('news_articles').delete().eq('id',id);if(error)throw error;setState(s=>({...s,news:s.news.filter(n=>n.id!==id)}))}
+  async function deleteNews(id){
+    if(mode==='demo'){mutate(s=>{s.news=s.news.map(n=>n.id===id?{...n,status:'draft'}:n);return s});return}
+    const {data,error}=await supabase.from('news_articles').update({status:'draft'}).eq('id',id).select().single();if(error)throw error
+    setState(s=>({...s,news:s.news.map(n=>n.id===id?mapNews(data):n)}))
+  }
+
   function resetDemo(){if(mode!=='demo')return;localStorage.removeItem(KEY);setState({...clone(seedState),locale:localStorage.getItem('poolkick_locale')||'en'})}
 
   const value=useMemo(()=>({state,setState,currentUser,loading,mode,connectionError,t,login,signup,logout,setLocale,updateProfile,createPool,joinPool,savePrediction,addComment,toggleTournament,setMatchResult,markNotificationsRead,publishNews,deleteNews,resetDemo,refreshSportsData,syncTournament,syncAllSports,addTournament,getRankings}),[state,currentUser,loading,mode,connectionError])

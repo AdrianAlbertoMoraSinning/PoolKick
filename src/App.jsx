@@ -15,10 +15,12 @@ import Support from './pages/Support'
 import Rankings from './pages/Rankings'
 import LiveScores from './pages/LiveScores'
 
+import { qaCopy } from './lib/qa'
+
 function Protected(){
-  const {currentUser,loading,connectionError,t}=useApp()
+  const {currentUser,loading,connectionError,t,state}=useApp()
   if(loading)return <div className="loading-screen">⚽<b>{t('common.loading')}</b></div>
-  if(connectionError&&!currentUser)return <div className="loading-screen error-screen">⚠️<b>Database connection error</b><span>{connectionError}</span><a href="/">Return home</a></div>
+  if(connectionError&&!currentUser)return <div className="loading-screen error-screen">⚠️<b>{qaCopy(state.locale).connection}</b><a href="/">{qaCopy(state.locale).back}</a></div>
   return currentUser?<Layout/>:<Navigate to="/" replace/>
 }
 

@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [marlon-v3-live-results-rankings-fix-pools]
+    branches: [main, marlon-v3-live-results-rankings-fix-pools]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,7 +12,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:render
       - name: Build
         id: build
         shell: bash

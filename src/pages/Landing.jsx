@@ -7,6 +7,8 @@ import { localizedField, localeTag } from '../i18n'
 import { Button, Card } from '../components/UI'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 
+import { qaCopy } from '../lib/qa'
+
 export default function Landing(){
   const {currentUser,login,signup,mode,state,t,connectionError}=useApp()
   const nav=useNavigate()
@@ -14,17 +16,18 @@ export default function Landing(){
   const [form,setForm]=useState(mode==='demo'?{email:'adrian@poolkick.demo',password:'demo',displayName:'Adrian'}:{email:'',password:'',displayName:''})
   const [err,setErr]=useState('')
   const [note,setNote]=useState('')
+  const [busy,setBusy]=useState(false)
   if(currentUser) return <Navigate to="/dashboard" replace/>
 
   const submit=async(e)=>{
-    e.preventDefault();setErr('');setNote('')
+    e.preventDefault();setErr('');setNote('');setBusy(true)
     try{
       if(auth==='signup'){
         const result=await signup(form)
         if(result?.needsConfirmation){setNote(t('auth.confirm'));return}
       }else await login(form.email,form.password)
       nav('/dashboard')
-    }catch(x){setErr(x.message)}
+    }catch(x){setErr(/fetch|network/i.test(x.message)?qaCopy(state.locale).connection:x.message)}finally{setBusy(false)}
   }
 
   const locale=state.locale||'en'
@@ -37,7 +40,7 @@ export default function Landing(){
       <div><a href="#how">{t('landing.how')}</a><a href="#features">{t('landing.features')}</a><Link to="/news-public">{t('landing.news')}</Link><Link to="/manual-public">{t('nav.manual')}</Link><LanguageSwitcher compact/><Button variant="ghost" onClick={()=>setAuth('login')}>{t('landing.signIn')}</Button><Button onClick={()=>setAuth('signup')}>{t('landing.createProfile')}</Button></div>
     </header>
 
-    {connectionError&&<div className="public-warning">⚠️ {connectionError}</div>}
+    {connectionError&&<div className="public-warning">⚠️ {qaCopy(state.locale).connection}</div>}
 
     <section className="hero" id="top">
       <div className="hero-copy"><span className="eyebrow">{t('landing.eyebrow')}</span><h1>{t('landing.hero1')}<br/><em>{t('landing.hero2')}</em></h1><p>{t('landing.intro')}</p><div className="hero-actions"><Button onClick={()=>setAuth('signup')}>{t('landing.createPool')} <ChevronRight size={18}/></Button><Button variant="secondary" onClick={()=>setAuth('login')}>{t('landing.joinFriends')}</Button></div><div className="trust-row"><span><CheckCircle2/> {t('landing.noBetting')}</span><span><CheckCircle2/> {t('landing.privateGroups')}</span><span><CheckCircle2/> {t('landing.mobileFirst')}</span></div></div>
@@ -56,6 +59,6 @@ export default function Landing(){
 
     <footer><div className="brand">⚽ {APP.name}</div><p>{t('landing.footer')}</p><small>© 2026 {APP.name}. {t('landing.brandTemp')}</small></footer>
 
-    {auth&&<div className="modal-backdrop" onMouseDown={()=>setAuth(null)}><div className="auth-modal" onMouseDown={e=>e.stopPropagation()}><button className="close-x" onClick={()=>setAuth(null)}>×</button><div className="brand center">⚽ {APP.name}</div><h2>{auth==='signup'?t('auth.createTitle'):t('auth.welcome')}</h2><p className="muted">{auth==='signup'?t('auth.createHelp'):t('auth.signInHelp')}</p><form onSubmit={submit}>{auth==='signup'&&<label>{t('auth.displayName')}<input value={form.displayName} onChange={e=>setForm({...form,displayName:e.target.value})} required/></label>}<label>{t('auth.email')}<input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required/></label><label>{t('auth.password')}<input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} required/></label>{err&&<div className="form-error">{err}</div>}{note&&<div className="form-success">{note}</div>}<Button type="submit" className="full">{auth==='signup'?t('auth.create'):t('landing.signIn')}</Button></form>{mode==='demo'&&<div className="demo-note"><b>{t('auth.demoTitle')}</b><span>{t('auth.demoText')}</span></div>}</div></div>}
+    {auth&&<div className="modal-backdrop" onMouseDown={()=>setAuth(null)}><div className="auth-modal" onMouseDown={e=>e.stopPropagation()}><button className="close-x" onClick={()=>setAuth(null)}>×</button><div className="brand center">⚽ {APP.name}</div><h2>{auth==='signup'?t('auth.createTitle'):t('auth.welcome')}</h2><p className="muted">{auth==='signup'?t('auth.createHelp'):t('auth.signInHelp')}</p><form onSubmit={submit}>{auth==='signup'&&<label>{t('auth.displayName')}<input value={form.displayName} onChange={e=>setForm({...form,displayName:e.target.value})} required/></label>}<label>{t('auth.email')}<input type="email" name="email" autoComplete="username" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required/></label><label>{t('auth.password')}<input type="password" name="password" autoComplete={auth==='signup'?'new-password':'current-password'} value={form.password} onChange={e=>setForm({...form,password:e.target.value})} required/></label>{err&&<div className="form-error">{err}</div>}{note&&<div className="form-success">{note}</div>}<Button type="submit" className="full" disabled={busy}>{busy?qaCopy(state.locale).loading:auth==='signup'?t('auth.create'):t('landing.signIn')}</Button></form>{mode==='demo'&&<div className="demo-note"><b>{t('auth.demoTitle')}</b><span>{t('auth.demoText')}</span></div>}</div></div>}
   </div>
 }

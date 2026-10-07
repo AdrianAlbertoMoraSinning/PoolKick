@@ -2,7 +2,7 @@ export const APP = {
   name: 'PoolKick',
   tagline: 'Predict. Compete. Brag.',
   supportEmail: 'support@poolkick.app',
-  version: '2.0.0',
+  version: '3.0.1',
   brandStatus: 'temporary',
   donationUrl: '',
   adsEnabled: false,
