@@ -1,25 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import { prepareTournamentRows } from "./mapping.js";
 
 const TSDB_KEY = Deno.env.get("THESPORTSDB_API_KEY") || "123";
 const TSDB = `https://www.thesportsdb.com/api/v1/json/${TSDB_KEY}`;
 const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST,OPTIONS"};
 const json = (data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{...cors,"content-type":"application/json"}});
 
-function statusOf(e:any){
-  const raw=String(e?.strStatus||e?.strProgress||'').toLowerCase();
-  if(raw.includes('postpon')) return 'postponed';
-  if(raw.includes('cancel')) return 'cancelled';
-  if(raw.includes('live')||raw.includes('half')||raw==='ht'||raw==='1h'||raw==='2h'||(/^\d{1,3}'?$/.test(raw)&&raw!=='0')) return 'live';
-  if(raw.includes('not started')||raw==='ns'||raw==='scheduled')return 'scheduled';
-  if(e?.intHomeScore!==null&&e?.intHomeScore!==undefined&&e?.intAwayScore!==null&&e?.intAwayScore!==undefined) return 'finished';
-  return 'scheduled';
-}
-function kickoffOf(e:any){
-  if(e?.strTimestamp){const d=new Date(e.strTimestamp);if(!Number.isNaN(d.valueOf()))return d.toISOString()}
-  const d=e?.dateEvent||new Date().toISOString().slice(0,10);let t=e?.strTime||'00:00:00';if(/^\d\d:\d\d$/.test(t))t+=':00';const dt=new Date(`${d}T${t}Z`);return Number.isNaN(dt.valueOf())?new Date().toISOString():dt.toISOString()
-}
-function teamRow(tournamentId:string,id:any,name:any,badge?:any){const ext=String(id||name||crypto.randomUUID());const clean=String(name||'TBD').trim();return{id:`tsdb_team_${ext}`,tournament_id:tournamentId,name:clean,code:clean.replace(/[^A-Za-z0-9]/g,'').slice(0,4).toUpperCase()||'TEAM',flag:'⚽',badge:clean.slice(0,3).toUpperCase(),logo_url:badge||null,external_id:ext}}
 async function tsdb(path:string){const r=await fetch(`${TSDB}/${path}`,{signal:AbortSignal.timeout(15000)});if(!r.ok)throw new Error(`TheSportsDB ${r.status}: ${path}`);return await r.json()}
 function mergeEvents(...groups:any[][]){const map=new Map<string,any>();for(const group of groups)for(const e of group||[])if(e?.idEvent)map.set(String(e.idEvent),e);return [...map.values()]}
 function ymd(offset=0){const d=new Date();d.setUTCDate(d.getUTCDate()+offset);return d.toISOString().slice(0,10)}
@@ -38,10 +25,13 @@ async function syncTournament(db:any,tournament:any){
   try{day2=(await tsdb(`eventsday.php?d=${ymd(-1)}&l=${encodeURIComponent(leagueId)}`))?.events||[]}catch(_e){}
   const events=mergeEvents(seasonEvents,next,past,day0,day1,day2).filter(e=>String(e.idLeague||leagueId)===leagueId&&String(e.strSeason||'')===season);
   if(!events.length)throw new Error(`No fixtures were returned for ${tournament.name} ${season}. Provider coverage may be unavailable.`);
-  const teamMap=new Map<string,any>();for(const t of teams){const r=teamRow(tournament.id,t.idTeam,t.strTeam,t.strBadge||t.strLogo);teamMap.set(String(t.idTeam||t.strTeam),r)}
-  for(const e of events){const h=teamRow(tournament.id,e.idHomeTeam,e.strHomeTeam,e.strHomeTeamBadge),a=teamRow(tournament.id,e.idAwayTeam,e.strAwayTeam,e.strAwayTeamBadge);if(!teamMap.has(String(e.idHomeTeam||e.strHomeTeam)))teamMap.set(String(e.idHomeTeam||e.strHomeTeam),h);if(!teamMap.has(String(e.idAwayTeam||e.strAwayTeam)))teamMap.set(String(e.idAwayTeam||e.strAwayTeam),a)}
-  const teamRows=[...teamMap.values()];if(teamRows.length){const{error}=await db.from('teams').upsert(teamRows,{onConflict:'id'});if(error)throw error}
-  const matchRows=events.filter(e=>e.idEvent).map(e=>({id:`tsdb_event_${e.idEvent}`,tournament_id:tournament.id,stage:e.strGroup||e.strSeason||'Tournament',round:e.intRound?`Round ${e.intRound}`:(e.strStatus||'Match'),home_team_id:`tsdb_team_${String(e.idHomeTeam||e.strHomeTeam)}`,away_team_id:`tsdb_team_${String(e.idAwayTeam||e.strAwayTeam)}`,kickoff:kickoffOf(e),status:statusOf(e),home_score:e.intHomeScore===null||e.intHomeScore===undefined?null:Number(e.intHomeScore),away_score:e.intAwayScore===null||e.intAwayScore===undefined?null:Number(e.intAwayScore),external_id:String(e.idEvent),venue:e.strVenue||null,minute:Number.isFinite(Number(e.intProgress))?Number(e.intProgress):null,provider_payload:{provider:'thesportsdb',league_id:leagueId,season,status:e.strStatus||null}}));
+  const [savedTeams,savedMatches]=await Promise.all([
+    db.from('teams').select('*').eq('tournament_id',tournament.id),
+    db.from('matches').select('id,tournament_id,external_id').in('external_id',events.map(e=>String(e.idEvent)))
+  ]);
+  if(savedTeams.error)throw savedTeams.error;if(savedMatches.error)throw savedMatches.error;
+  const {teams:teamRows,matches:matchRows}=prepareTournamentRows(tournament,teams,events,savedTeams.data||[],savedMatches.data||[]);
+  if(teamRows.length){const{error}=await db.from('teams').upsert(teamRows,{onConflict:'id'});if(error)throw error}
   if(matchRows.length){const{error}=await db.from('matches').upsert(matchRows,{onConflict:'id'});if(error)throw error}
   const{error:updateError}=await db.from('tournaments').update({logo_url:league?.strBadge||league?.strLogo||tournament.logo_url||null,last_synced_at:new Date().toISOString()}).eq('id',tournament.id);if(updateError)throw updateError;
   return{id:tournament.id,name:tournament.name,teams:teamRows.length,matches:matchRows.length,logo:Boolean(league?.strBadge||league?.strLogo)}

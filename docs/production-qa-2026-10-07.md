@@ -21,10 +21,10 @@ Database: zexnqxvgenqkizrpdyqm. Review began October 6, 2026, Edmonton time.
 ## Evidence
 
 - Production build: PASS (`npm run build`). Bundler still notes a JavaScript chunk over 500 kB; no performance benchmark was run.
-- Regression tests: 11 PASS (`npm test`), including session hydration, auth/profile failure propagation and deferred auth subscriptions with logout/unmount cancellation.
+- Regression tests: 14 PASS (`npm test`), including session hydration, auth/profile failure propagation and deferred auth subscriptions with logout/unmount cancellation.
 - Static React module rendering: 36 PASS (`npm run test:render`), covering 12 screens in EN/ES/FR with fixtures. This is not browser interaction or responsive testing.
-- Database transaction tests: 11 PASS (`tests/database-qa.sql`). Created and read back a pool and its creator membership; verified idempotent joining; inserted and updated a prediction using ON CONFLICT; verified profile, chat and multilingual news writes; recorded a final result after kickoff and confirmed 5 points; verified both ranking RPCs; rejected a late pick; checked anonymous privacy and draft visibility. All test rows and profile edits were rolled back.
-- sports-sync deployed as version 3. An unauthenticated HTTP request returns 401 "Authentication required". Admin-authorized provider synchronization remains untested in this browser session.
+- Database transaction tests: 13 PASS (`tests/database-qa.sql`). Created and read back a pool and its creator membership; verified idempotent joining; inserted and updated a prediction using ON CONFLICT; verified profile, chat and multilingual news writes; recorded a final result after kickoff and confirmed 5 points; verified both ranking RPCs; rejected a late pick; checked anonymous privacy and draft visibility. All test rows and profile edits were rolled back.
+- sports-sync deployed as version 4. An unauthenticated HTTP request returns 401 "Authentication required". Admin-authorized provider synchronization remains untested in this browser session.
 - Security Advisor: no new database-policy findings; existing warning for disabled leaked-password protection remains.
 
 ## Browser acceptance and remaining limits
@@ -52,3 +52,13 @@ Final production QA must remain open until the browser session is usable and eve
 Removed full-page reloads after sign-in and immediate-session sign-up. Sign-in now resolves only after loading the account profile and its permitted database data; failures propagate to the form. Added auth-session subscriptions with deferred database work, immediate private-data cleanup on sign-out, subscription cleanup and generation guards against stale loads restoring private data after logout.
 
 The public production news loaded in the cloud browser, but a secure sign-in attempt still returned a network error before a corresponding request appeared in Supabase auth logs. An independent OPTIONS request to the password-token endpoint returned HTTP 200 with the required CORS headers; this does not establish connectivity from the cloud browser or successful authenticated login. No credential, password, RLS or network-protection changes were made. The session-flow correction is tested; the live browser login remains unverified.
+
+
+## Further production investigation
+
+- Supabase remains ACTIVE_HEALTHY; Marlon's existing admin email is confirmed and the account is not currently banned. A narrow log window for the last failed sign-in contains successful public data GETs and our OPTIONS diagnostic, but no password-token POST. No evidence establishes a rejected password or broken admin permission. Cloud-browser sign-in remains blocked/unverified; no further automated credential retries were made.
+- Live public browser checks passed for EN/ES/FR language switches, localized news, Champions League filtering, empty Copa América news, navigation back home, manual language switching and jumping to Administration. Desktop news and manual were visually inspected. This does not cover authenticated modules or mobile viewport acceptance.
+- Fixed sync identities: new team IDs are scoped to their tournament; existing team/match IDs remain stable, preserving linked picks; missing provider artwork retains an existing logo. Fixtures already assigned to another tournament are rejected before writes. Global external-event uniqueness remains enforced by the database. Empty scores remain null, and malformed kickoff/score data raises an error instead of fabricating results. Three additional regression tests passed.
+- Applied fixed_pool_rules migration: authenticated clients cannot change a pool's scoring, tournament, creator, ID or creation timestamp after creation. Pool name/code/visibility updates retain existing row policies. The expanded database suite passed all 13 checks, including attempted scoring/tournament changes; transaction fixtures and profile edits were rolled back, with zero QA rows remaining.
+- sports-sync version 4 is ACTIVE and continues to reject anonymous requests with HTTP 401. Real admin-authorized provider synchronization is still pending.
+- Donate was verified in the live public page: the payment action is disabled and explicitly says that Marlon must supply the final payment link.

@@ -16,6 +16,16 @@ begin
  insert into qa_ids values(p->>'id',uid,p->>'code');
  if not exists(select 1 from public.pools where id=p->>'id') or not exists(select 1 from public.pool_members where pool_id=p->>'id' and user_id=uid) then raise exception 'Pool or creator membership not persisted';end if;
  insert into qa_evidence values('create pool + creator membership','PASS');
+ begin
+  update public.pools set scoring='simple' where id=p->>'id';
+  raise exception 'Scoring rules changed after creation';
+ exception when insufficient_privilege then null;end;
+ insert into qa_evidence values('scoring rules fixed after creation','PASS');
+ begin
+  update public.pools set tournament_id=(select id from public.tournaments where id<>p->>'tournament_id' limit 1) where id=p->>'id';
+  raise exception 'Pool tournament changed after creation';
+ exception when insufficient_privilege then null;end;
+ insert into qa_evidence values('pool tournament fixed after creation','PASS');
  if public.join_pool_by_code(p->>'code')<>p->>'id' then raise exception 'Join failed';end if;
  select count(*) into n from public.pool_members where pool_id=p->>'id' and user_id=uid;
  if n<>1 then raise exception 'Join duplicate';end if;
