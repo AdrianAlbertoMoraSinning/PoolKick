@@ -21,7 +21,7 @@ Database: zexnqxvgenqkizrpdyqm. Review began October 6, 2026, Edmonton time.
 ## Evidence
 
 - Production build: PASS (`npm run build`). Bundler still notes a JavaScript chunk over 500 kB; no performance benchmark was run.
-- Regression tests: 8 PASS (`npm test`).
+- Regression tests: 11 PASS (`npm test`), including session hydration, auth/profile failure propagation and deferred auth subscriptions with logout/unmount cancellation.
 - Static React module rendering: 36 PASS (`npm run test:render`), covering 12 screens in EN/ES/FR with fixtures. This is not browser interaction or responsive testing.
 - Database transaction tests: 11 PASS (`tests/database-qa.sql`). Created and read back a pool and its creator membership; verified idempotent joining; inserted and updated a prediction using ON CONFLICT; verified profile, chat and multilingual news writes; recorded a final result after kickoff and confirmed 5 points; verified both ranking RPCs; rejected a late pick; checked anonymous privacy and draft visibility. All test rows and profile edits were rolled back.
 - sports-sync deployed as version 3. An unauthenticated HTTP request returns 401 "Authentication required". Admin-authorized provider synchronization remains untested in this browser session.
@@ -46,3 +46,9 @@ The live landing page and login form loaded. The secure sign-in flow surfaced "F
 At inspection the database held 4 tournaments and only 10 provider matches, all finished, with no upcoming fixture coverage. EURO and Copa América had no match rows. The free provider integration does not establish full live coverage; this cannot be certified as complete sports data.
 
 Final production QA must remain open until the browser session is usable and every pending acceptance item above is exercised against the deployed build.
+
+## Sign-in follow-up
+
+Removed full-page reloads after sign-in and immediate-session sign-up. Sign-in now resolves only after loading the account profile and its permitted database data; failures propagate to the form. Added auth-session subscriptions with deferred database work, immediate private-data cleanup on sign-out, subscription cleanup and generation guards against stale loads restoring private data after logout.
+
+The public production news loaded in the cloud browser, but a secure sign-in attempt still returned a network error before a corresponding request appeared in Supabase auth logs. An independent OPTIONS request to the password-token endpoint returned HTTP 200 with the required CORS headers; this does not establish connectivity from the cloud browser or successful authenticated login. No credential, password, RLS or network-protection changes were made. The session-flow correction is tested; the live browser login remains unverified.

@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import React, { createContext, useContext, useEffect, useMemo, useState, useRef } from 'react'
 import { seedState } from '../data/seed'
 import { recalculatePredictions } from '../lib/scoring'
 import { hasSupabase, supabase } from '../lib/supabase'
 import { translate } from '../i18n'
 import { predictionOpen, validScores, qaCopy, syncSummary } from '../lib/qa'
+import { completePasswordSignIn, subscribeToSession } from '../lib/auth'
 
 const KEY = 'poolkick_state_v3'
 const Ctx = createContext(null)
@@ -31,6 +32,9 @@ export function AppProvider({ children }) {
   const [loading, setLoading] = useState(hasSupabase)
   const [mode] = useState(hasSupabase ? 'supabase' : 'demo')
   const [connectionError,setConnectionError]=useState('')
+  const loadGeneration=useRef(0)
+  const explicitAuth=useRef(false)
+  const loadedUser=useRef(null)
 
   useEffect(() => { if (mode === 'demo') localStorage.setItem(KEY, JSON.stringify(state)) }, [state, mode])
 
@@ -54,14 +58,21 @@ export function AppProvider({ children }) {
     setState(s=>({...s,...sports}))
   }
 
-  async function boot() {
+  async function boot({session:providedSession,throwOnError=false}={}) {
     if (!hasSupabase) return
+    const generation=++loadGeneration.current
     setConnectionError('')
     try {
-      const { data: { session }, error:sessionError } = await supabase.auth.getSession()
-      if(sessionError) throw sessionError
+      let session=providedSession
+      if(session===undefined){
+        const {data,error}=await supabase.auth.getSession()
+        if(error)throw error
+        session=data.session
+      }
       const sports=await loadPublicSports()
       if (!session) {
+        if(generation!==loadGeneration.current)return
+        loadedUser.current=null
         setState(prev=>({...blankPrivateState(prev),...sports}))
         return
       }
@@ -70,6 +81,8 @@ export function AppProvider({ children }) {
       ])
       const pools = poolsRows.map(p => ({...p,commissionerId:p.commissioner_id,tournamentId:p.tournament_id,createdAt:p.created_at,members:poolMembers.filter(pm=>pm.pool_id===p.id).map(pm=>pm.user_id)}))
       if(!profiles.some(p=>p.id===session.user.id)) throw new Error('Account profile is unavailable.')
+      if(generation!==loadGeneration.current)return
+      loadedUser.current=session.user.id
       setState({
         ...sports,
         sessionUserId:session.user.id,
@@ -81,12 +94,30 @@ export function AppProvider({ children }) {
         notifications:notifications.map(x=>({...x,userId:x.user_id,createdAt:x.created_at})),
       })
     } catch (e) {
-      console.error('Supabase connection error.', e)
-      setConnectionError(e?.message || 'Unable to connect to the database.')
-    } finally { setLoading(false) }
+      if(generation===loadGeneration.current)setConnectionError(e?.message || 'Unable to connect to the database.')
+      if(throwOnError)throw e
+    } finally { if(generation===loadGeneration.current)setLoading(false) }
   }
 
-  useEffect(()=>{boot()},[])
+  useEffect(()=>{
+    if(!hasSupabase)return
+    const unsubscribe=subscribeToSession(supabase.auth,{
+      signedOut:()=>{
+        ++loadGeneration.current
+        loadedUser.current=null
+        setConnectionError('')
+        setLoading(false)
+        setState(s=>({...blankPrivateState(s),tournaments:s.tournaments,teams:s.teams,matches:s.matches,news:s.news.filter(n=>n.status==='published')}))
+      },
+      changed:session=>{
+        if(explicitAuth.current||loadedUser.current===session.user.id)return
+        setLoading(true)
+        void boot({session})
+      }
+    })
+    void boot()
+    return ()=>{unsubscribe();++loadGeneration.current}
+  },[])
   useEffect(()=>{document.documentElement.lang=state.locale||'en'},[state.locale])
 
   useEffect(() => {
@@ -131,9 +162,11 @@ export function AppProvider({ children }) {
 
   async function login(email, password='') {
     if (mode === 'supabase') {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) throw error
-      setState(s=>({...s,sessionUserId:data.user.id}));window.location.reload();return
+      explicitAuth.current=true
+      try {
+        await completePasswordSignIn(supabase.auth,{email:email.trim(),password},session=>boot({session,throwOnError:true}))
+      } finally {explicitAuth.current=false}
+      return
     }
     let user=state.users.find(u=>u.email.toLowerCase()===email.toLowerCase())
     if(!user){user={id:uid('u'),email,displayName:email.split('@')[0],country:'',countryFlag:'🌎',avatar:'⚽',favoriteTeam:'',role:'player',createdAt:new Date().toISOString()};mutate(s=>{s.users.push(user);s.sessionUserId=user.id;return s})}
@@ -142,10 +175,13 @@ export function AppProvider({ children }) {
 
   async function signup({email,password,displayName}) {
     if(mode==='supabase'){
-      const {data,error}=await supabase.auth.signUp({email,password,options:{data:{display_name:displayName}}})
-      if(error) throw error
-      if(data.session) window.location.reload()
-      return {needsConfirmation:!data.session}
+      explicitAuth.current=true
+      try {
+        const {data,error}=await supabase.auth.signUp({email:email.trim(),password,options:{data:{display_name:displayName}}})
+        if(error)throw error
+        if(data.session)await boot({session:data.session,throwOnError:true})
+        return {needsConfirmation:!data.session}
+      }finally{explicitAuth.current=false}
     }
     const user={id:uid('u'),email,displayName,country:'',countryFlag:'🌎',avatar:'⚽',favoriteTeam:'',role:'player',createdAt:new Date().toISOString()}
     mutate(s=>{s.users.push(user);s.sessionUserId=user.id;return s});return {needsConfirmation:false}
