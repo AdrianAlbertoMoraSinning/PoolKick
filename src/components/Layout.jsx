@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext'
 import { APP } from '../config'
 import { Button } from './UI'
 import LanguageSwitcher from './LanguageSwitcher'
+import LiveTicker from './LiveTicker'
 import { featureCopy } from '../featureCopy'
 import { qaCopy } from '../lib/qa'
 
@@ -42,9 +43,10 @@ export default function Layout(){
     <main className="main-area">
       <header className="topbar"><button aria-label="Menu" className="icon-btn mobile-only" onClick={()=>setOpen(true)}><Menu/></button><NavLink className="mobile-brand mobile-only" to="/dashboard">⚽ {APP.name}</NavLink><div className="top-spacer"/><div className="desktop-lang"><LanguageSwitcher compact/></div>
         <div className="bell-wrap"><button className="icon-btn" aria-label={t('common.notifications')} onClick={async()=>{setBells(!bells);if(!bells)try{await markNotificationsRead()}catch(e){setError(e.message||qaCopy(state.locale).failed)}}}><Bell size={20}/>{unread>0&&<b>{unread}</b>}</button>{bells&&<div className="notice-pop"><strong>{t('common.notifications')}</strong>{notices.length?notices.slice().reverse().map(n=><div className="notice" key={n.id}>{n.text}<small>{new Date(n.createdAt).toLocaleDateString()}</small></div>):<p className="muted">{t('common.noNotifications')}</p>}</div>}</div>
-        <NavLink to="/profile" className="top-avatar">{currentUser?.avatar || '⚽'}</NavLink>
+        <NavLink to="/profile" className="top-avatar">{currentUser?.avatar?.startsWith?.('http')?<img src={currentUser.avatar} alt=""/>:(currentUser?.avatar || '⚽')}</NavLink>
       </header>
       <div className="page">{error&&<div role="alert" className="form-error">{error}</div>}<Outlet/></div>
+      <LiveTicker/>
       <nav className="mobile-bottom-nav">{mobileLinks.map(([to,Icon,label])=><NavLink key={to} to={to}><Icon size={20}/><span>{label}</span></NavLink>)}</nav>
     </main>
   </div>
