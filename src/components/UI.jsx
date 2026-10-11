@@ -16,5 +16,9 @@ export function TournamentMark({tournament,size='md'}){
   const src=failed===raw?null:raw
   return <div className={`tourney-icon ${size==='lg'?'large':size==='sm'?'sm':''}`} style={!src?{background:tournament?.accent}:undefined}>{src?<img src={src} onError={()=>setFailed(raw)} alt="" loading="lazy" referrerPolicy="no-referrer"/>:(tournament?.icon||'🏆')}</div>
 }
-export function Avatar({user,size='md'}){return <div className={`avatar avatar-${size}`}>{user?.avatar || '⚽'}</div>}
+export function Avatar({user,size='md'}){
+  const value=user?.avatar||'⚽'
+  const isImage=/^https?:\/\//i.test(value)||value.startsWith('data:image/')
+  return <div className={`avatar avatar-${size} ${isImage?'avatar-image':''}`}>{isImage?<img src={value} alt={user?.displayName||'Profile'} loading="lazy"/>:value}</div>
+}
 export function Stat({value,label}){return <div className="stat"><strong>{value}</strong><span>{label}</span></div>}
