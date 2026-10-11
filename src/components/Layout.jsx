@@ -6,6 +6,7 @@ import { APP } from '../config'
 import { Button } from './UI'
 import LanguageSwitcher from './LanguageSwitcher'
 import LiveTicker from './LiveTicker'
+import BackgroundRefresh from './BackgroundRefresh'
 import { featureCopy } from '../featureCopy'
 import { qaCopy } from '../lib/qa'
 
@@ -34,6 +35,7 @@ export default function Layout(){
   const doLogout=async()=>{try{await logout();nav('/')}catch(e){setError(e.message||qaCopy(state.locale).failed)}}
 
   return <div className="app-shell">
+    <BackgroundRefresh/>
     <aside className={`sidebar ${open?'open':''}`}>
       <div className="brand-row"><NavLink to="/dashboard" className="brand"><span className="brand-ball">⚽</span><span>{APP.name}</span></NavLink><button className="icon-btn mobile-only" onClick={()=>setOpen(false)}><X size={20}/></button></div>
       <div className="mode-chip">{mode==='demo'?t('common.demo'):t('common.live')}</div>
