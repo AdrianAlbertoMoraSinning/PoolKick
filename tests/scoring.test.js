@@ -3,15 +3,16 @@ import assert from 'node:assert/strict'
 import { calculatePoints,recalculatePredictions,standingsForPool } from '../src/lib/scoring.js'
 import { predictionOpen,validScores,syncSummary,qaCopy } from '../src/lib/qa.js'
 
-test('classic and simple scoring: exact, difference, outcome and loss',()=>{
- const match={status:'finished',homeScore:3,awayScore:1}
- assert.equal(calculatePoints({homeScore:3,awayScore:1},match),5)
- assert.equal(calculatePoints({homeScore:2,awayScore:0},match),3)
- assert.equal(calculatePoints({homeScore:1,awayScore:0},match),2)
- assert.equal(calculatePoints({homeScore:0,awayScore:1},match),0)
- assert.equal(calculatePoints({homeScore:3,awayScore:1},match,'simple'),3)
- assert.equal(calculatePoints({homeScore:2,awayScore:0},match,'simple'),1)
- assert.equal(calculatePoints({homeScore:0,awayScore:0},{status:'finished',homeScore:1,awayScore:1}),3)
+test('PoolKick scoring: 4 exact winner, 3 winner, 2 exact draw, 1 draw',()=>{
+ const win={status:'finished',homeScore:3,awayScore:1}
+ assert.equal(calculatePoints({homeScore:3,awayScore:1},win),4)
+ assert.equal(calculatePoints({homeScore:2,awayScore:1},win),3)
+ assert.equal(calculatePoints({homeScore:0,awayScore:1},win),0)
+ const draw={status:'finished',homeScore:4,awayScore:4}
+ assert.equal(calculatePoints({homeScore:4,awayScore:4},draw),2)
+ assert.equal(calculatePoints({homeScore:2,awayScore:2},draw),1)
+ assert.equal(calculatePoints({homeScore:4,awayScore:3},draw),0)
+ assert.equal(calculatePoints({homeScore:3,awayScore:1},win,'simple'),3)
 })
 test('missing or unfinished results do not award points',()=>{
  assert.equal(calculatePoints({homeScore:0,awayScore:0},undefined),null)
@@ -23,12 +24,13 @@ test('recalculation preserves application state through profile, chat and notifi
  const result=recalculatePredictions(state)
  assert.equal(Array.isArray(result),false)
  assert.equal(result.sessionUserId,'u1')
- assert.equal(result.predictions[0].points,5)
+ assert.equal(result.predictions[0].points,4)
  assert.equal(state.predictions[0].points,undefined)
- assert.equal(standingsForPool(result,'p1')[0].points,5)
+ assert.equal(standingsForPool(result,'p1')[0].points,4)
+ assert.equal(standingsForPool(result,'p1')[0].exact,1)
 })
 test('a temporarily missing member profile does not crash standings',()=>{
- const result=standingsForPool({users:[],predictions:[],pools:[{id:'p',members:['missing']}]},'p')
+ const result=standingsForPool({users:[],predictions:[],pools:[{id:'p',members:['missing']}],matches:[]},'p')
  assert.equal(result[0].user.id,'missing')
 })
 test('only scheduled future matches accept picks, with kickoff equality locked',()=>{
