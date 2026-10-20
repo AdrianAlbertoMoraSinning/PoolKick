@@ -5,7 +5,10 @@ const messages={
 }
 export const qaCopy=locale=>messages[locale]||messages.en
 export function validScores(home,away){return [home,away].every(v=>v!==''&&v!=null&&Number.isSafeInteger(Number(v))&&Number(v)>=0&&Number(v)<=2147483647)}
-export function predictionOpen(match,now=Date.now()){return Boolean(match&&match.status==='scheduled'&&new Date(match.kickoff).valueOf()>now)}
+export function predictionOpen(match,now=Date.now()){
+ const status=String(match?.status||'').toLowerCase()
+ return Boolean(match&& !['finished','cancelled','canceled','live'].includes(status) && new Date(match.kickoff).valueOf()>now)
+}
 export function syncSummary(data,locale){
  const c=qaCopy(locale),results=data?.results||[data?.result].filter(Boolean)
  const failures=results.filter(r=>r.error||r.skipped)
