@@ -21,11 +21,11 @@ export default function Layout(){
   const unread=notices.filter(n=>!n.read).length
   const links=[
     ['/dashboard',Gauge,t('nav.dashboard')],
+    ['/pools',UsersRound,t('nav.pools')],
     ['/live',Radio,c.live],
     ['/rankings',ListOrdered,c.rankings],
     ['/news',Newspaper,t('nav.news')],
     ['/tournaments',Trophy,t('nav.tournaments')],
-    ['/pools',UsersRound,t('nav.pools')],
     ['/profile',CircleUserRound,t('nav.profile')],
     ['/support',Heart,t('nav.support')],
     ['/manual',BookOpen,t('nav.manual')]
