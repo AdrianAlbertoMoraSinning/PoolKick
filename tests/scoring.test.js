@@ -33,10 +33,11 @@ test('a temporarily missing member profile does not crash standings',()=>{
  const result=standingsForPool({users:[],predictions:[],pools:[{id:'p',members:['missing']}],matches:[]},'p')
  assert.equal(result[0].user.id,'missing')
 })
-test('only scheduled future matches accept picks, with kickoff equality locked',()=>{
+test('future non-started matches accept picks, with kickoff equality locked',()=>{
  const now=Date.parse('2026-10-07T00:00:00Z')
  assert.equal(predictionOpen({status:'scheduled',kickoff:'2026-10-07T01:00:00Z'},now),true)
- for(const status of ['live','finished','postponed','cancelled'])assert.equal(predictionOpen({status,kickoff:'2026-10-07T01:00:00Z'},now),false)
+ assert.equal(predictionOpen({status:'postponed',kickoff:'2026-10-07T01:00:00Z'},now),true)
+ for(const status of ['live','finished','cancelled','canceled'])assert.equal(predictionOpen({status,kickoff:'2026-10-07T01:00:00Z'},now),false)
  assert.equal(predictionOpen({status:'scheduled',kickoff:'2026-10-07T00:00:00Z'},now),false)
 })
 test('invalid score input is rejected before persistence',()=>{
