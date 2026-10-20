@@ -1,5 +1,5 @@
 import React, {useState} from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, ChevronRight, Heart, Newspaper, Trophy, UsersRound, Zap } from 'lucide-react'
 import { APP } from '../config'
 import { useApp } from '../context/AppContext'
@@ -12,12 +12,15 @@ import { qaCopy } from '../lib/qa'
 export default function Landing(){
   const {currentUser,login,signup,mode,state,t,connectionError}=useApp()
   const nav=useNavigate()
+  const [params]=useSearchParams()
+  const joinCode=params.get('join')||''
+  const joinTarget=joinCode?`/pools?join=${encodeURIComponent(joinCode)}`:'/dashboard'
   const [auth,setAuth]=useState(null)
   const [form,setForm]=useState(mode==='demo'?{email:'adrian@poolkick.demo',password:'demo',displayName:'Adrian'}:{email:'',password:'',displayName:''})
   const [err,setErr]=useState('')
   const [note,setNote]=useState('')
   const [busy,setBusy]=useState(false)
-  if(currentUser) return <Navigate to="/dashboard" replace/>
+  if(currentUser) return <Navigate to={joinTarget} replace/>
 
   const submit=async(e)=>{
     e.preventDefault();setErr('');setNote('');setBusy(true)
@@ -26,7 +29,7 @@ export default function Landing(){
         const result=await signup(form)
         if(result?.needsConfirmation){setNote(t('auth.confirm'));return}
       }else await login(form.email,form.password)
-      nav('/dashboard')
+      nav(joinTarget)
     }catch(x){setErr(/fetch|network/i.test(x.message)?qaCopy(state.locale).connection:x.message)}finally{setBusy(false)}
   }
 
