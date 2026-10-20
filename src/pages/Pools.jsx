@@ -1,5 +1,5 @@
 import React,{useMemo,useState} from 'react'
-import { Link,useNavigate } from 'react-router-dom'
+import { Link,useNavigate,useSearchParams } from 'react-router-dom'
 import { Copy, Plus, UsersRound } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { Button, Pill, TournamentMark } from '../components/UI'
@@ -9,6 +9,7 @@ import { qaCopy } from '../lib/qa'
 export default function Pools(){
  const {state,currentUser,createPool,joinPool,t,mode}=useApp()
  const nav=useNavigate()
+ const [params,setParams]=useSearchParams()
  const q=qaCopy(state.locale)
  const active=useMemo(()=>state.tournaments.filter(x=>x.status==='active'),[state.tournaments])
  const [create,setCreate]=useState(false)
@@ -17,6 +18,7 @@ export default function Pools(){
  const [err,setErr]=useState('')
  const [code,setCode]=useState('')
  const [form,setForm]=useState({tournamentId:active[0]?.id||'',name:'',scoring:'classic',visibility:'private'})
+ React.useEffect(()=>{const invite=params.get('join');if(invite!==null){setCode(invite==='1'?'':invite.toUpperCase());setJoin(true);setParams({}, {replace:true})}},[])
  const pools=state.pools.filter(p=>p.members.includes(currentUser.id))
  const openCreate=()=>{setErr('');setForm(f=>({...f,tournamentId:active.some(x=>x.id===f.tournamentId)?f.tournamentId:(active[0]?.id||'')}));setCreate(true)}
  const make=async e=>{e.preventDefault();setErr('');setBusy(true);try{if(!form.tournamentId)throw new Error(q.choose);const p=await createPool({...form,scoring:'classic'});setCreate(false);nav(`/pools/${p.id}`)}catch(x){setErr(x.message||'Unable to create pool.')}finally{setBusy(false)}}
